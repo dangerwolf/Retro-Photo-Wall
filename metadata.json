@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Retro AI Polaroid",
+  "description": "A retro-styled instant camera app that connects to your webcam. Take photos, watch them develop, and arrange them on your wall. Uses Gemini to auto-caption your memories.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
