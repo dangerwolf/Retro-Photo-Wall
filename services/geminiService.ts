@@ -1,6 +1,11 @@
+// 1. 引入新的包
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// 2. 使用新的类名初始化
+
+
+const ai = new GoogleGenerativeAI(process.env.API_KEY as string); 
+
 
 export const generatePhotoCaption = async (base64Image: string): Promise<string> => {
   try {
