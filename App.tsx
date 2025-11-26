@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Camera } from './components/Camera';
 import { Polaroid } from './components/Polaroid';
 import { PolaroidPhoto } from './types';
@@ -11,19 +11,46 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Load photos from DB on mount
+  useEffect(() => {
+    const fetchPhotos = async () => {
+      try {
+        const res = await fetch('/api/photos');
+        if (res.ok) {
+          const data = await res.json();
+          // Ensure retrieved photos are not in "developing" state
+          const loadedPhotos = data.map((p: any) => ({
+            ...p,
+            isDeveloping: false
+          }));
+          setPhotos(loadedPhotos);
+        }
+      } catch (err) {
+        console.error("Failed to load photos", err);
+      }
+    };
+    fetchPhotos();
+  }, []);
+
   const handleCapture = async (dataUrl: string) => {
     if (isProcessing) return;
     setIsProcessing(true);
 
+    const newId = uuidv4();
+    const initialX = 50;
+    const initialY = window.innerHeight - 450;
+    const rotation = (Math.random() - 0.5) * 10;
+    const timestamp = Date.now();
+
     // 1. Create the photo object immediately for the animation
     const newPhoto: PolaroidPhoto = {
-      id: uuidv4(),
+      id: newId,
       imageUrl: dataUrl,
-      timestamp: Date.now(),
+      timestamp: timestamp,
       caption: "", // Empty initially
-      x: 50, // Start near the camera ejection point relative to container
-      y: window.innerHeight - 450, // Approximate top of camera
-      rotation: (Math.random() - 0.5) * 10, // Random slight tilt
+      x: initialX, 
+      y: initialY,
+      rotation: rotation,
       isDeveloping: true,
     };
 
@@ -32,10 +59,13 @@ const App: React.FC = () => {
 
     // 2. Animate "Ejection" logic
     // We'll simulate the ejection by updating its position after a brief moment
+    const finalX = initialX + (Math.random() * 50);
+    const finalY = initialY - 200;
+
     setTimeout(() => {
         setPhotos((prev) => prev.map(p => 
             p.id === newPhoto.id 
-            ? { ...p, y: p.y - 200, x: p.x + (Math.random() * 50) } // Move up and slightly random X
+            ? { ...p, y: finalY, x: finalX } // Move up and slightly random X
             : p
         ));
     }, 100);
@@ -46,30 +76,85 @@ const App: React.FC = () => {
         prev.map((p) => (p.id === newPhoto.id ? { ...p, isDeveloping: false } : p))
       );
       setIsProcessing(false);
-    }, 3000); // Allow next shot sooner than full develop
+    }, 3000); 
 
-    // 4. Fetch AI Caption in background
+    // 4. Fetch AI Caption in background AND Save to DB
     try {
       const caption = await generatePhotoCaption(dataUrl);
+      
+      // Update UI
       setPhotos((prev) =>
         prev.map((p) => (p.id === newPhoto.id ? { ...p, caption } : p))
       );
+
+      // Save to Database
+      await fetch('/api/photos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: newId,
+          imageUrl: dataUrl,
+          timestamp,
+          caption,
+          x: finalX,
+          y: finalY,
+          rotation
+        })
+      });
+
     } catch (e) {
-      console.error("Failed to caption", e);
+      console.error("Failed to caption or save", e);
+      const fallbackCaption = "Start of something new";
+      
       setPhotos((prev) =>
-        prev.map((p) => (p.id === newPhoto.id ? { ...p, caption: "Start of something new" } : p))
+        prev.map((p) => (p.id === newPhoto.id ? { ...p, caption: fallbackCaption } : p))
       );
+
+      // Save even if caption failed (with fallback)
+      await fetch('/api/photos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: newId,
+          imageUrl: dataUrl,
+          timestamp,
+          caption: fallbackCaption,
+          x: finalX,
+          y: finalY,
+          rotation
+        })
+      });
     }
   };
 
-  const handleDragEnd = (id: string, x: number, y: number) => {
+  const handleDragEnd = async (id: string, x: number, y: number) => {
+    // Optimistic UI update
     setPhotos((prev) =>
       prev.map((p) => (p.id === id ? { ...p, x, y } : p))
     );
+
+    // Persist position
+    try {
+      await fetch(`/api/photos/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x, y })
+      });
+    } catch (err) {
+      console.error("Failed to save position", err);
+    }
   };
 
-  const handleDeletePhoto = (id: string) => {
+  const handleDeletePhoto = async (id: string) => {
+    // Optimistic UI update
     setPhotos((prev) => prev.filter((p) => p.id !== id));
+
+    // Delete from DB
+    try {
+      await fetch(`/api/photos/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error("Failed to delete photo", err);
+    }
   };
 
   return (
@@ -103,7 +188,6 @@ const App: React.FC = () => {
 
       {/* Camera Layer (Fixed Bottom Left) */}
       <div className="absolute bottom-10 left-10 z-30">
-        {/* Invisible slot animation helper could go here */}
         <motion.div 
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
