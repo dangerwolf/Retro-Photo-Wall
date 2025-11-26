@@ -6,7 +6,7 @@ const genAI = new GoogleGenerativeAI(process.env.API_KEY || (window as any).proc
 export const generatePhotoCaption = async (base64Image: string): Promise<string> => {
   try {
     // 1. 获取特定的生成式模型实例 (这是新版 SDK 的关键步骤)
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // 注意：gemini-2.5-flash 可能还未公测，建议先用 gemini-1.5-flash 或 gemini-pro-vision
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" }); // 注意：gemini-2.5-flash 可能还未公测，建议先用 gemini-1.5-flash 或 gemini-pro-vision
 
     // 2. 清理 Base64 前缀
     const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, "");
